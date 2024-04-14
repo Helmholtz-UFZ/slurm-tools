@@ -1,0 +1,14 @@
+.{
+    .name = "slurm-tools",
+    .version = "0.0.1",
+    .paths = .{
+        "README.md",
+        "LICENSE",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .snodestats = .{ .path = "src/snodestats" },
+    },
+}

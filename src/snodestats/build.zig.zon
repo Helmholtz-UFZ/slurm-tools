@@ -1,0 +1,21 @@
+.{
+    .name = "snodestats",
+    .version = "0.0.1",
+    .dependencies = .{
+        .slurm = .{
+            .url = "https://github.com/tazend/zig-slurm/archive/b933572d52ab8b9a42fee739638e39697a25571a.tar.gz",
+            .hash = "1220ca06627d3594ec578c3b7afdab0275bab3fbdd0935f7b4d4569401ac17c2c155"
+        },
+        .prettytable = .{
+            .url = "https://github.com/tazend/prettytable-zig/archive/e87bfb7508799bffa2a3cc0150ad605bfb5b58e9.tar.gz",
+            .hash = "12203cd21d25334a458d1f01890ab37288833e516df46b6f431ea8a2aaa93b15595b"
+        },
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/8c98e6404b22aafc0184e999d8f068b81cc22fa1.tar.gz",
+            .hash = "122014e73fd712190e109950837b97f6143f02d7e2b6986e1db70b6f4aadb5ba6a0d"
+        },
+    },
+    .paths = .{
+        "",
+    },
+}
