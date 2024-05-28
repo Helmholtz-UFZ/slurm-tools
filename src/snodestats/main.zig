@@ -79,25 +79,29 @@ pub fn show_nodes(allocator: Allocator, res: anytype, stdout: anytype) !void {
         try table.setTitle(&.{ "Nodename", "AllocCPUs", "IdleCPUs", "AllocMemory", "IdleMemory" });
     }
 
-    var node_resp = try slurm.Node.load_all();
+    var node_resp = try slurm.Node.loadAll();
     defer node_resp.deinit();
 
     var total_util = slurm.Node.Utilization{};
 
     var node_iter = node_resp.iter();
     while (node_iter.next()) |node| {
-        const pdata = node.parse_c_ptr();
-        const idle_cpus = try allocPrint(allocator, "{d}", .{pdata.idle_cpus});
-        const alloc_cpus = try allocPrint(allocator, "{d}", .{pdata.alloc_cpus});
-        const alloc_memory = try humanize(allocator, pdata.alloc_memory);
-        const idle_memory = try humanize(allocator, pdata.idle_memory);
+        // node.name might be null if there are Nodes in the slurm.conf which
+        // physically do not exist anymore.
+        const node_name = slurm.parseCStr(node.name) orelse continue;
+
+        const util = node.utilization();
+        const idle_cpus = try allocPrint(allocator, "{d}", .{util.idle_cpus});
+        const alloc_cpus = try allocPrint(allocator, "{d}", .{util.alloc_cpus});
+        const alloc_memory = try humanize(allocator, util.alloc_memory);
+        const idle_memory = try humanize(allocator, util.idle_memory);
 
         if (arg_free) {
-            try table.addRow(&.{ pdata.name, idle_cpus, idle_memory });
+            try table.addRow(&.{ node_name, idle_cpus, idle_memory });
         } else {
             try table.addRow(
                 &.{
-                    pdata.name,
+                    node_name,
                     alloc_cpus,
                     idle_cpus,
                     alloc_memory,
@@ -105,13 +109,7 @@ pub fn show_nodes(allocator: Allocator, res: anytype, stdout: anytype) !void {
                 },
             );
         }
-
-        total_util.alloc_memory += pdata.alloc_memory;
-        total_util.idle_memory += pdata.idle_memory;
-        total_util.alloc_cpus += pdata.alloc_cpus;
-        total_util.idle_cpus += pdata.idle_cpus;
-        total_util.total_cpus += pdata.total_cpus;
-        total_util.real_memory += pdata.real_memory;
+        total_util.add(util);
     }
 
     if (res.args.stats == 0) {
