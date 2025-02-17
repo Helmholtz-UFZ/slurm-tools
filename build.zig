@@ -45,12 +45,12 @@ pub const Exe = struct {
     pub fn install(self: *Exe) !void {
         self.step = self.build.addExecutable(.{
             .name = self.name,
-            .root_source_file = .{ .path = self.path },
+            .root_source_file = self.build.path(self.path),
             .target = self.target,
             .optimize = self.optimize,
         });
 
-        try slurm.setupSlurmPath(self.step, null, self.backing_allocator);
+        try slurm.setupSlurmPath(self.build, self.step, null);
         try self.addDep("slurm");
         self.linkSlurm();
         self.addImports();
@@ -60,7 +60,7 @@ pub const Exe = struct {
 
     fn addTests(self: Exe) !void {
         const exe_unit_tests = self.build.addTest(.{
-            .root_source_file = .{ .path = self.path },
+            .root_source_file = self.build.path(self.path),
             .target = self.target,
             .optimize = self.optimize,
         });
