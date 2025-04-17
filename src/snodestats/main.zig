@@ -1,5 +1,6 @@
 const std = @import("std");
 const slurm = @import("slurm");
+const Gres = slurm.gres.Gres;
 const pt = @import("prettytable");
 const clap = @import("clap");
 const allocPrint = std.fmt.allocPrint;
@@ -17,139 +18,106 @@ const params = clap.parseParamsComptime(
     \\-p, --part             Show partition related utization.
 );
 
-pub const Gres = struct {
+pub const GresUtil = struct {
     name: []const u8,
-    type: ?[]const u8,
+    type: ?[]const u8 = null,
     name_and_type: []const u8,
-    count: u64,
+    alloc: u64 = 0,
+    idle: u64 = 0,
+    total: u64 = 0,
 
-    pub const Collection = std.ArrayList(Gres);
+    pub const FormatType = enum {
+        idle,
+        alloc,
+        idleAndAlloc,
+    };
 
-    pub const Util = struct {
-        name: []const u8,
-        type: ?[]const u8 = null,
-        name_and_type: []const u8,
-        alloc: u64 = 0,
-        idle: u64 = 0,
-        total: u64 = 0,
+    pub const Collection = std.ArrayList(GresUtil);
 
-        pub const Collection = std.ArrayList(Gres.Util);
+    pub fn fmtCollection(gres: GresUtil.Collection, allocator: Allocator, fmt_type: GresUtil.FormatType) ![]const u8 {
+        var tres_fmt = std.ArrayList(u8).init(allocator);
+        defer tres_fmt.deinit();
 
-        pub fn fmtCollection(gres: Gres.Util.Collection, allocator: Allocator, fmt_type: Gres.Util.FormatType) ![]const u8 {
-            var tres_fmt = std.ArrayList(u8).init(allocator);
-            defer tres_fmt.deinit();
-
-            for (gres.items) |t| {
-                const gres_str = try t.fmt(allocator, fmt_type);
-                try tres_fmt.appendSlice(gres_str);
-            }
-
-            _ = tres_fmt.pop();
-            return tres_fmt.toOwnedSlice();
+        for (gres.items) |t| {
+            const gres_str = try t.fmt(allocator, fmt_type);
+            try tres_fmt.appendSlice(gres_str);
         }
 
-        pub fn combine(alloc_gres: Gres.Collection, cfg_gres: Gres.Collection, allocator: Allocator) !Gres.Util.Collection {
-            var gres_util = Gres.Util.Collection.init(allocator);
+        _ = tres_fmt.pop();
+        return tres_fmt.toOwnedSlice();
+    }
 
-            for (cfg_gres.items) |cg| {
-                var util = Gres.Util{
-                    .name = cg.name,
-                    .type = cg.type,
-                    .name_and_type = cg.name_and_type,
-                    .alloc = 0,
-                    .idle = cg.count,
-                    .total = cg.count,
-                };
+    pub fn combine(alloc_gres: ?[:0]const u8, cfg_gres: [:0]const u8, allocator: Allocator) !?GresUtil.Collection {
+        var gres_util = GresUtil.Collection.init(allocator);
+        var cfg_gres_iter = Gres.iter(cfg_gres, ',');
 
-                for (alloc_gres.items) |ag| {
+        while (cfg_gres_iter.next()) |cg| {
+            var util = GresUtil{
+                .name = cg.name,
+                .type = cg.type,
+                .name_and_type = cg.name_and_type,
+                .alloc = 0,
+                .idle = cg.count,
+                .total = cg.count,
+            };
+
+            if (alloc_gres) |gres| {
+                var alloc_gres_iter = Gres.iter(gres, ',');
+                while (alloc_gres_iter.next()) |ag| {
                     if (std.mem.eql(u8, ag.name_and_type, cg.name_and_type)) {
                         util.alloc = ag.count;
                         util.idle = cg.count - ag.count;
                         util.total = cg.count;
                     }
                 }
-                try gres_util.append(util);
             }
+
+            try gres_util.append(util);
+        }
+
+        if (gres_util.items.len > 0) {
             return gres_util;
+        } else {
+            gres_util.deinit();
+            return null;
         }
-
-        pub const FormatType = enum {
-            idle,
-            alloc,
-            idleAndAlloc,
-        };
-
-        pub fn fmt(self: Gres.Util, allocator: Allocator, fmt_type: FormatType) ![]const u8 {
-            const name_or_type = if (self.type) |typ|
-                try allocPrint(allocator, "   {s}", .{typ})
-            else
-                self.name[std.mem.indexOfScalar(u8, self.name, '/').? + 1 ..];
-
-            return switch (fmt_type) {
-                .idle => {
-                    if (self.idle == 0) return "";
-                    return try allocPrint(allocator, "{s}={d}\n", .{
-                        name_or_type,
-                        self.idle,
-                    });
-                },
-                .alloc => {
-                    if (self.alloc == 0) return "";
-                    return try allocPrint(allocator, "{s}={d}\n", .{
-                        name_or_type,
-                        self.alloc,
-                    });
-                },
-                .idleAndAlloc => {
-                    if (self.alloc == 0 and self.idle == 0) return "";
-                    return try allocPrint(allocator, "{s}={d}/{d} ({d} idle)\n", .{
-                        name_or_type,
-                        self.alloc,
-                        self.total,
-                        self.idle,
-                    });
-                },
-            };
-        }
-    };
-
-    pub fn fromKVPair(kv: []const u8) !Gres {
-        var it = std.mem.splitScalar(u8, kv, '=');
-        const name_and_type = it.first();
-        const count = try std.fmt.parseInt(u64, it.rest(), 10);
-
-        var it2 = std.mem.splitScalar(u8, name_and_type, ':');
-        const name = it2.first();
-        var typ: ?[]const u8 = null;
-        if (it2.next()) |t| {
-            typ = t;
-        }
-
-        return .{
-            .name = name,
-            .type = typ,
-            .name_and_type = name_and_type,
-            .count = count,
-        };
     }
 
-    pub fn parseCollection(str: []const u8, allocator: Allocator) !Gres.Collection {
-        const gres = slurm.TresString.init(str);
-        // maybe use defer if (gres) |t| { ... }
-        defer gres.deinit();
-        var collection = Gres.Collection.init(allocator);
+    pub fn fmt(self: GresUtil, allocator: Allocator, fmt_type: FormatType) ![]const u8 {
+        const name_or_type = if (self.type) |typ|
+            try allocPrint(allocator, "   {s}", .{typ})
+        else
+            self.name;
 
-        var gres_iter = gres.iter();
-        while (gres_iter.next()) |kv| {
-            if (!std.mem.startsWith(u8, kv, "gres")) continue;
-            try collection.append(try Gres.fromKVPair(kv));
-        }
-
-        return collection;
+        return switch (fmt_type) {
+            .idle => {
+                if (self.idle == 0) return "";
+                return try allocPrint(allocator, "{s}={d}\n", .{
+                    name_or_type,
+                    self.idle,
+                });
+            },
+            .alloc => {
+                if (self.alloc == 0) return "";
+                return try allocPrint(allocator, "{s}={d}\n", .{
+                    name_or_type,
+                    self.alloc,
+                });
+            },
+            .idleAndAlloc => {
+                if (self.alloc == 0 and self.idle == 0) return "";
+                return try allocPrint(allocator, "{s}={d}/{d} ({d} idle)\n", .{
+                    name_or_type,
+                    self.alloc,
+                    self.total,
+                    self.idle,
+                });
+            },
+        };
     }
 };
 
-fn humanize(allocator: Allocator, val: u64) ![]const u8 {
+fn humanize(allocator: Allocator, val: u128) ![]const u8 {
     const units = [_][]const u8{ "M", "G", "T", "P", "E", "Z" };
     var fl: f64 = @floatFromInt(val);
 
@@ -206,13 +174,16 @@ fn fmtTotalCPUStats(table: *pt.Table, allocator: Allocator, util: slurm.Node.Uti
     });
 }
 
-fn fmtTotalGresStats(table: *pt.Table, allocator: Allocator, gres: std.StringArrayHashMap(Gres.Util)) !void {
+fn fmtTotalGresStats(table: *pt.Table, allocator: Allocator, gres: std.StringArrayHashMap(GresUtil)) !void {
     var header: std.ArrayList(u8) = .init(allocator);
     var total_gres: std.ArrayList(u8) = .init(allocator);
     var alloc_gres: std.ArrayList(u8) = .init(allocator);
     var idle_gres: std.ArrayList(u8) = .init(allocator);
 
     var g_iter = gres.iterator();
+
+    if (g_iter.len == 0) return;
+
     while (g_iter.next()) |kv| {
         const total = kv.value_ptr.total;
         const alloc = kv.value_ptr.alloc;
@@ -221,7 +192,7 @@ fn fmtTotalGresStats(table: *pt.Table, allocator: Allocator, gres: std.StringArr
         const name = if (kv.value_ptr.type) |typ|
             try allocPrint(allocator, "   {s}", .{typ})
         else
-            kv.value_ptr.name_and_type;
+            try allocPrint(allocator, "gres/{s}", .{kv.value_ptr.name_and_type});
 
         const new_line = if (g_iter.index < g_iter.len) "\n" else "";
 
@@ -256,16 +227,19 @@ fn fmtTotalGresStats(table: *pt.Table, allocator: Allocator, gres: std.StringArr
     });
 }
 
-fn show_node_total_util(allocator: Allocator, util: slurm.Node.Utilization, gres: std.StringArrayHashMap(Gres.Util)) !void {
+fn show_node_total_util(allocator: Allocator, util: slurm.Node.Utilization, gres: std.StringArrayHashMap(GresUtil)) !void {
     var tstats = pt.Table.init(allocator);
     defer tstats.deinit();
 
-    //    tstats.setFormat(pt.FORMAT_NO_BORDER);
+    tstats.setFormat(pt.FORMAT_NO_BORDER);
     try fmtTotalCPUStats(&tstats, allocator, util);
     try fmtTotalMemoryStats(&tstats, allocator, util);
     try fmtTotalGresStats(&tstats, allocator, gres);
 
     try tstats.setTitle(&.{ "Resource", "Total", "Alloc", "Idle" });
+    for (tstats.titles.?.cells.items) |*cell| {
+        cell.setAlign(pt.Alignment.center);
+    }
     try tstats.printstd();
 }
 
@@ -274,7 +248,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
     defer table.deinit();
 
     var title = std.ArrayList([]const u8).init(allocator);
-    try title.appendSlice(&.{"Nodename"});
+    try title.appendSlice(&.{ "Nodename", "State" });
 
     if (args.free) {
         if (args.cpu) try title.appendSlice(&.{"IdleCPUs"});
@@ -287,15 +261,21 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
     } else {
         if (args.cpu) try title.appendSlice(&.{"CPUs (A/I/T)"});
         if (args.mem) try title.appendSlice(&.{"Memory (A/I/T)"});
-        if (args.gres) try title.appendSlice(&.{"GRES (A/I/T)"});
+        if (args.gres) try title.appendSlice(&.{"GRES"});
     }
+
     try table.setTitle(try title.toOwnedSlice());
+    for (table.titles.?.cells.items) |*cell| {
+        cell.setAlign(pt.Alignment.center);
+    }
+
+    table.setFormat(pt.FORMAT_BOX_CHARS);
 
     var node_resp = try slurm.loadNodes();
     defer node_resp.deinit();
 
     var total_util = slurm.Node.Utilization{};
-    var total_util_gres: std.StringArrayHashMap(Gres.Util) = .init(allocator);
+    var total_util_gres: std.StringArrayHashMap(GresUtil) = .init(allocator);
 
     var node_iter = node_resp.iter();
     while (node_iter.next()) |node| {
@@ -306,7 +286,8 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         const state = node.state;
         const invalid_base_states = state.base != .idle and state.base != .mixed;
         const invalid_state_flags = state.flags.reservation or state.flags.drain;
-        if (invalid_base_states or invalid_state_flags) continue;
+
+        if (args.free and (invalid_base_states or invalid_state_flags)) continue;
 
         const util = node.utilization();
         const idle_cpus = try allocPrint(allocator, "{d}", .{util.idle_cpus});
@@ -314,55 +295,73 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         const alloc_memory = try humanize(allocator, util.alloc_memory);
         const idle_memory = try humanize(allocator, util.idle_memory);
 
-        const alloc_gres_str = "gres/gpu=3,gres/gpu:nvidia-a100=3";
-        const alloc_gres = try Gres.parseCollection(alloc_gres_str, allocator);
+        const alloc_tres = try node.allocTres(allocator);
+        // const alloc_gres = "gres/gpu=3,gres/gpu:nvidia-a100=3";
 
-        const cfg_gres_str = "gres/gpu=20,gres/gpu:nvidia-a100=10,gres/gpu:nvidia-h100=10";
-        const cfg_gres = try Gres.parseCollection(cfg_gres_str, allocator);
+        var gres_util: ?GresUtil.Collection = null;
+        if (node.tres_fmt_str != null) {
+            // const cfg_gres = "gres/gpu=20,gres/gpu:nvidia-a100=10,gres/gpu:nvidia-h100=10";
+            // gres_util = try GresUtil.combine(alloc_gres, cfg_gres, allocator);
+            gres_util = try GresUtil.combine(
+                alloc_tres,
+                slurm.parseCStrZ(node.tres_fmt_str).?,
+                allocator,
+            );
 
-        const gres_util = try Gres.Util.combine(alloc_gres, cfg_gres, allocator);
-
-        for (gres_util.items) |gu| {
-            const gg = try total_util_gres.getOrPut(gu.name_and_type);
-            if (gg.found_existing) {
-                gg.value_ptr.alloc += gu.alloc;
-                gg.value_ptr.idle += gu.idle;
-                gg.value_ptr.total += gu.total;
-            } else {
-                gg.value_ptr.* = gu;
+            if (gres_util) |gutil| {
+                for (gutil.items) |gu| {
+                    const gg = try total_util_gres.getOrPut(gu.name_and_type);
+                    if (gg.found_existing) {
+                        gg.value_ptr.alloc += gu.alloc;
+                        gg.value_ptr.idle += gu.idle;
+                        gg.value_ptr.total += gu.total;
+                    } else {
+                        gg.value_ptr.* = gu;
+                    }
+                }
             }
         }
 
         var data = std.ArrayList([]const u8).init(allocator);
         try data.appendSlice(&.{node_name});
+        try data.appendSlice(&.{try state.toStr(allocator)});
 
         if (args.free) {
             if (args.cpu) try data.appendSlice(&.{idle_cpus});
             if (args.mem) try data.appendSlice(&.{idle_memory});
-            if (args.gres) try data.appendSlice(&.{try Gres.Util.fmtCollection(gres_util, allocator, .idle)});
+            if (args.gres and gres_util != null) try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .idle)});
         } else if (args.alloc) {
             if (args.cpu) try data.appendSlice(&.{alloc_cpus});
             if (args.mem) try data.appendSlice(&.{alloc_memory});
-            if (args.gres) try data.appendSlice(&.{try Gres.Util.fmtCollection(gres_util, allocator, .alloc)});
+            if (args.gres and gres_util != null) try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .alloc)});
         } else {
             if (args.cpu) {
-                const fmt = try allocPrint(allocator, "{d}/{d}/{d}", .{ util.alloc_cpus, util.idle_cpus, util.total_cpus });
+                const fmt = try allocPrint(allocator, "{d: >2} / {d: >2} / {d: >2}", .{
+                    util.alloc_cpus,
+                    util.idle_cpus,
+                    util.total_cpus,
+                });
                 try data.appendSlice(&.{fmt});
             }
 
             if (args.mem) {
                 const total_memory = try humanize(allocator, util.real_memory);
-                const fmt = try allocPrint(allocator, "{s}/{s}/{s}", .{ alloc_memory, idle_memory, total_memory });
+                const fmt = try allocPrint(allocator, "{s: >7} / {s : >7} / {s: >7}", .{
+                    alloc_memory,
+                    idle_memory,
+                    total_memory,
+                });
                 try data.appendSlice(&.{fmt});
             }
 
-            if (args.gres) {
-                try data.appendSlice(&.{try Gres.Util.fmtCollection(gres_util, allocator, .idleAndAlloc)});
+            if (args.gres and gres_util != null) {
+                try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .idleAndAlloc)});
             }
         }
-        try table.addRow(try data.toOwnedSlice());
 
+        if (args.gres and !args.cpu and !args.mem and gres_util == null) continue;
         total_util.add(util);
+        try table.addRow(try data.toOwnedSlice());
     }
 
     if (!args.stats) {
