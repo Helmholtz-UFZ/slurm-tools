@@ -4,7 +4,7 @@ const yazap = @import("yazap");
 const log = std.log;
 const App = yazap.App;
 const Arg = yazap.Arg;
-const cmd_node_run = @import("snodestats/main.zig").run;
+const cmd_node_run = @import("node.zig").run;
 
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
