@@ -1,22 +1,11 @@
 const std = @import("std");
 const slurm = @import("slurm");
-const Gres = slurm.gres.Gres;
 const pt = @import("prettytable");
-const clap = @import("clap");
+const yazap = @import("yazap");
+const Gres = slurm.gres.Gres;
 const allocPrint = std.fmt.allocPrint;
 const Allocator = std.mem.Allocator;
-
-const params = clap.parseParamsComptime(
-    \\-h, --help             Display this help and exit.
-    \\-f, --free             Only show how much resources are free.
-    \\-c, --cpu              Only show CPU statistics.
-    \\-m, --mem              Only show Memory statistics.
-    \\-g, --gres             Only show GRES (GPU) statistics.
-    \\-a, --alloc            Only show how much resources are allocated.
-    \\-n, --nodes            Show node-related utlization. This is the default.
-    \\-s, --stats            Only show total Cluster utilization summary.
-    \\-p, --part             Show partition related utization.
-);
+const ArgMatches = yazap.ArgMatches;
 
 pub const GresUtil = struct {
     name: []const u8,
@@ -144,8 +133,6 @@ fn to_percent(comptime T: type, numerator: anytype, denominator: anytype) T {
     const d: T = @floatFromInt(denominator);
     return (n / d) * 100.0;
 }
-
-pub fn show_parts() void {}
 
 fn fmtTotalMemoryStats(table: *pt.Table, allocator: Allocator, util: slurm.Node.Utilization) !void {
     const alloc_percent = to_percent(f64, util.alloc_memory, util.real_memory);
@@ -373,45 +360,22 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
 }
 
 pub const Args = struct {
-    partitions: bool,
-    nodes: bool,
     free: bool,
     alloc: bool,
     cpu: bool,
     mem: bool,
     gres: bool,
     stats: bool,
-    help: bool,
-
-    clap_result: clap.Result(clap.Help, &params, clap.parsers.default),
-
-    pub fn deinit(self: Args) void {
-        self.clap_result.deinit();
-    }
 };
 
-pub fn parseArgs(allocator: Allocator) !Args {
-    var diag = clap.Diagnostic{};
-    const res = clap.parse(clap.Help, &params, clap.parsers.default, .{
-        .diagnostic = &diag,
-        .allocator = allocator,
-    }) catch |err| {
-        // Report useful error and exit
-        diag.report(std.io.getStdErr().writer(), err) catch {};
-        return err;
-    };
-
+pub fn parseArgs(matches: ArgMatches) !Args {
     var args: Args = .{
-        .partitions = res.args.part != 0,
-        .nodes = res.args.part == 0 or res.args.nodes != 0,
-        .free = res.args.free != 0,
-        .alloc = res.args.alloc != 0,
-        .cpu = res.args.cpu != 0,
-        .mem = res.args.mem != 0,
-        .gres = res.args.gres != 0,
-        .stats = res.args.stats != 0,
-        .help = res.args.help != 0,
-        .clap_result = res,
+        .free = matches.containsArg("free"),
+        .alloc = matches.containsArg("alloc"),
+        .cpu = matches.containsArg("cpu"),
+        .mem = matches.containsArg("mem"),
+        .gres = matches.containsArg("gres"),
+        .stats = matches.containsArg("summary"),
     };
 
     if (!args.cpu and !args.mem and !args.gres) {
@@ -423,28 +387,14 @@ pub fn parseArgs(allocator: Allocator) !Args {
     return args;
 }
 
-pub fn main() !void {
+pub fn run(allocator: Allocator, matches: ArgMatches) !void {
     slurm.init(null);
     defer slurm.deinit();
 
     const stdout = std.io.getStdOut().writer();
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    const args = try parseArgs(allocator);
-    defer args.deinit();
-
-    if (args.help) {
-        return clap.help(
-            std.io.getStdErr().writer(),
-            clap.Help,
-            &params,
-            .{ .spacing_between_parameters = 0 },
-        );
+    if (matches.subcommandMatches("stats")) |stats_args| {
+        const args = try parseArgs(stats_args);
+        try show_nodes(allocator, args, stdout);
     }
-
-    if (args.nodes) try show_nodes(allocator, args, stdout);
-    if (args.partitions) show_parts();
 }
