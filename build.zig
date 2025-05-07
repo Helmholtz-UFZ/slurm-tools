@@ -1,10 +1,10 @@
 const std = @import("std");
+const slurm = @import("slurm");
 const Compile = std.Build.Step.Compile;
 const ResolvedTarget = std.Build.ResolvedTarget;
 const OptimizedMode = std.builtin.OptimizeMode;
 const Dependency = std.Build.Dependency;
 const Module = std.Build.Module;
-const slurm = @import("slurm");
 const DependencyList = std.ArrayList(DependencyNamed);
 const Allocator = std.mem.Allocator;
 
@@ -34,11 +34,7 @@ pub const Exe = struct {
             .backing_allocator = allocator,
         };
         exe.slurm_dep = exe.stdDep("slurm");
-        exe.path = try std.fmt.allocPrint(
-            exe.backing_allocator,
-            "src/{s}/main.zig",
-            .{exe.name},
-        );
+        exe.path = "src/main.zig";
         return exe;
     }
 
@@ -82,10 +78,14 @@ pub const Exe = struct {
     }
 
     pub fn stdDep(self: Exe, name: []const u8) *Dependency {
-        return self.build.dependency(name, .{
-            .target = self.target,
-            .optimize = self.optimize,
-        });
+        if (std.mem.eql(u8, "yazap", name)) {
+            return self.build.dependency(name, .{});
+        } else {
+            return self.build.dependency(name, .{
+                .target = self.target,
+                .optimize = self.optimize,
+            });
+        }
     }
 
     pub fn namedDep(self: Exe, name: []const u8) DependencyNamed {
@@ -106,11 +106,11 @@ pub const Exe = struct {
     }
 };
 
-fn snodestats(b: *std.Build, allocator: Allocator, target: ResolvedTarget, optimize: OptimizedMode) !void {
-    var exe = try Exe.default(b, "snodestats", allocator, target, optimize);
+fn scli(b: *std.Build, allocator: Allocator, target: ResolvedTarget, optimize: OptimizedMode) !void {
+    var exe = try Exe.default(b, "scli", allocator, target, optimize);
     try exe.deps.appendSlice(&[_]DependencyNamed{
         exe.namedDep("prettytable"),
-        exe.namedDep("clap"),
+        exe.namedDep("yazap"),
     });
     try exe.install();
 }
@@ -123,5 +123,5 @@ pub fn build(b: *std.Build) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    try snodestats(b, allocator, target, optimize);
+    try scli(b, allocator, target, optimize);
 }
