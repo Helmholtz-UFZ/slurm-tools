@@ -5,6 +5,7 @@ const log = std.log;
 const App = yazap.App;
 const Arg = yazap.Arg;
 const cmd_node_run = @import("node.zig").run;
+const cmd_job_run = @import("job.zig").run;
 
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -34,11 +35,30 @@ pub fn main() anyerror!void {
 
     try cmd_node.addSubcommand(cmd_node_stats);
     try cmd_node.addSubcommand(cmd_node_info);
+
+    var cmd_job = app.createCommand("job", "Job commands");
+    cmd_job.setProperty(.help_on_empty_args);
+
+    var cmd_job_stat = app.createCommand("stat", "Stat jobs");
+    try cmd_job_stat.addArgs(&[_]Arg{
+        Arg.booleanOption("all", 'a', "Also show all steps seperately."),
+        Arg.booleanOption("with-ok", null, "Also show jobs that are OK."),
+        Arg.singleValueOption("underu", 'l', "underutil threshhold"),
+        Arg.singleValueOption("overu", 'o', "overutil threshhold"),
+    });
+
+    try cmd_job.addSubcommand(cmd_job_stat);
+
     try scli.addSubcommand(cmd_node);
+    try scli.addSubcommand(cmd_job);
 
     const matches = try app.parseProcess();
 
     if (matches.subcommandMatches("node")) |node_cmd_args| {
         try cmd_node_run(allocator, node_cmd_args);
+    }
+
+    if (matches.subcommandMatches("job")) |job_cmd_args| {
+        try cmd_job_run(allocator, job_cmd_args);
     }
 }
