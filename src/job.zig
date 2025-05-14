@@ -10,13 +10,13 @@ var args: Args = .{};
 
 pub const StepWithStats = struct {
     step: *slurm.Step,
-    stats: slurm.job.StepStatistics = .{},
+    stats: slurm.Step.Statistics = .{},
 };
 
 pub const JobWithStats = struct {
     job: *slurm.Job,
     steps: std.ArrayList(StepWithStats),
-    stats: slurm.job.JobStatistics = .{},
+    stats: slurm.Job.Statistics = .{},
 };
 
 pub const StatResponse = struct {
@@ -35,7 +35,7 @@ pub fn stat(allocator: Allocator) !StatResponse {
     var jobs = try slurm.loadJobs();
     var job_iter = jobs.iter();
 
-    const steps = try slurm.loadStepsAll();
+    const steps = try slurm.step.loadAll();
     var step_iter = steps.iter();
 
     var stat_resp: StatResponse = .{
@@ -60,7 +60,7 @@ pub fn stat(allocator: Allocator) !StatResponse {
 
     while (step_iter.next()) |step| {
         const job_id = step.step_id.job_id;
-        const stats = try slurm.job.statStep(allocator, step);
+        const stats = try slurm.step.stat(allocator, step);
 
         if (stat_resp.data.getPtr(job_id)) |v| {
             try v.steps.append(.{
@@ -175,7 +175,7 @@ pub fn processJobs(allocator: Allocator) !void {
     while (iter.next()) |item| {
         const job = item.job;
 
-        if (job.state.base == .pending) continue;
+        if (job.state.base != .running) continue;
 
         const user_name = slurm.parseCStrZ(job.user_name) orelse "N/A";
         const account = slurm.parseCStrZ(job.account) orelse "N/A";
