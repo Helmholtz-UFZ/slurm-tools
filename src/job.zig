@@ -203,13 +203,17 @@ pub fn getCpuEfficiencyState(
     alloc_cpus: u32,
     run_time: std.posix.time_t,
 ) CPUEfficiency {
-    var state: CPUEfficiency.Status = .ok;
+    const total_cpu: f64 = @floatFromInt(total_cpu_time);
+    const elapsed_cpu: f64 = @floatFromInt(elapsed_cpu_time);
+    const lower: f64 = (elapsed_cpu * args.util_lower) / 100.0;
+    const upper: f64 = (elapsed_cpu * args.util_upper) / 100.0;
 
-    if (total_cpu_time > ((elapsed_cpu_time * args.util_upper) / 100)) {
+    var state: CPUEfficiency.Status = .ok;
+    if (total_cpu > upper) {
         state = .over;
     } else if (alloc_cpus > 1 and total_cpu_time < run_time) {
         state = .critical;
-    } else if (total_cpu_time < ((elapsed_cpu_time * args.util_lower) / 100)) {
+    } else if (total_cpu < lower) {
         state = .under;
     }
 
@@ -281,6 +285,7 @@ pub fn processJobs(allocator: Allocator) !void {
                 const stats = step_stat.stats;
 
                 const num_cpus = if (step.num_cpus > 0) step.num_cpus else 1;
+                const step_id_str = try step.idToString(allocator);
 
                 const step_eff = getCpuEfficiencyState(
                     stats.total_cpu_time,
@@ -292,7 +297,7 @@ pub fn processJobs(allocator: Allocator) !void {
                 const step_time_limit = if (step.time_limit != slurm.common.Infinite.u32) step.time_limit else job.time_limit;
 
                 try table.addRow(&[_][]const u8{
-                    try allocPrint(allocator, "  {d}.{d}", .{ job.job_id, step.step_id.step_id }),
+                    try allocPrint(allocator, " {d}.{s}", .{ job.job_id, step_id_str }),
                     @tagName(step_eff.status),
                     if (step.nodes) |n| std.mem.span(n) else "N/A",
                     user_name,
@@ -313,8 +318,8 @@ pub fn processJobs(allocator: Allocator) !void {
 pub const Args = struct {
     all: bool = false,
     with_ok: bool = false,
-    util_lower: u8 = 80,
-    util_upper: u8 = 101,
+    util_lower: f16 = 80.0,
+    util_upper: f16 = 101.0,
     jobs: std.ArrayListUnmanaged(u32) = .empty,
     users: std.ArrayListUnmanaged([]const u8) = .empty,
     nodes: std.ArrayListUnmanaged([]const u8) = .empty,
@@ -402,11 +407,11 @@ pub fn parseArgs(matches: ArgMatches, allocator: Allocator) !Args {
     }
 
     if (matches.getSingleValue("underutil-threshold")) |under| {
-        args.util_lower = try std.fmt.parseInt(u8, under, 10);
+        args.util_lower = try std.fmt.parseFloat(f16, under);
     }
 
     if (matches.getSingleValue("overutil-threshold")) |over| {
-        args.util_upper = try std.fmt.parseInt(u8, over, 10);
+        args.util_lower = try std.fmt.parseFloat(f16, over);
     }
 
     if (matches.getSingleValue("min-cpus")) |min_cpus| {
