@@ -237,7 +237,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
     defer table.deinit();
 
     var title = std.ArrayList([]const u8).init(allocator);
-    try title.appendSlice(&.{ "Nodename", "State" });
+    try title.appendSlice(&.{"Nodename"});
 
     if (args.free) {
         if (args.cpu) try title.appendSlice(&.{"IdleCPUs"});
@@ -248,6 +248,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         if (args.mem) try title.appendSlice(&.{"AllocMemory"});
         if (args.gres) try title.appendSlice(&.{"AllocGRES"});
     } else {
+        if (args.states.len > 0) try title.appendSlice(&.{"State"});
         if (args.cpu) try title.appendSlice(&.{"CPUs (A/I/T)"});
         if (args.mem) try title.appendSlice(&.{"Memory (A/I/T)"});
         if (args.gres) try title.appendSlice(&.{"GRES"});
@@ -267,7 +268,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
     var total_util_gres: std.StringArrayHashMap(GresUtil) = .init(allocator);
 
     var node_iter = node_resp.iter();
-    while (node_iter.next()) |node| {
+    nextNode: while (node_iter.next()) |node| {
         // node.name might be null if there are Nodes in the slurm.conf which
         // physically do not exist anymore.
         const node_name = slurm.parseCStr(node.name) orelse continue;
@@ -277,6 +278,17 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         const invalid_state_flags = state.flags.reservation or state.flags.drain;
 
         if (args.free and (invalid_base_states or invalid_state_flags)) continue;
+
+        var data = std.ArrayList([]const u8).init(allocator);
+        try data.appendSlice(&.{node_name});
+
+        if (!args.free and !args.alloc) {
+            for (args.states) |requested_state| {
+                const state_str = try state.toStr(allocator);
+                if (std.mem.count(u8, state_str, requested_state) == 0) continue :nextNode;
+                try data.appendSlice(&.{try state.toStr(allocator)});
+            }
+        }
 
         const util = node.utilization();
         const idle_cpus = try allocPrint(allocator, "{d}", .{util.idle_cpus});
@@ -310,10 +322,6 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
                 }
             }
         }
-
-        var data = std.ArrayList([]const u8).init(allocator);
-        try data.appendSlice(&.{node_name});
-        try data.appendSlice(&.{try state.toStr(allocator)});
 
         if (args.free) {
             if (args.cpu) try data.appendSlice(&.{idle_cpus});
@@ -378,6 +386,7 @@ pub const Args = struct {
     mem: bool,
     gres: bool,
     stats: bool,
+    states: [][]const u8,
 };
 
 pub fn parseArgs(matches: ArgMatches) !Args {
@@ -388,6 +397,7 @@ pub fn parseArgs(matches: ArgMatches) !Args {
         .mem = matches.containsArg("mem"),
         .gres = matches.containsArg("gres"),
         .stats = matches.containsArg("summary"),
+        .states = matches.getMultiValues("states") orelse &.{},
     };
 
     if (!args.cpu and !args.mem and !args.gres) {
