@@ -297,12 +297,9 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         const idle_memory = try humanize(allocator, util.idle_memory);
 
         const alloc_tres = try node.allocTres(allocator);
-        // const alloc_gres = "gres/gpu=3,gres/gpu:nvidia-a100=3";
 
         var gres_util: ?GresUtil.Collection = null;
         if (node.tres_fmt_str != null) {
-            // const cfg_gres = "gres/gpu=20,gres/gpu:nvidia-a100=10,gres/gpu:nvidia-h100=10";
-            // gres_util = try GresUtil.combine(alloc_gres, cfg_gres, allocator);
             gres_util = try GresUtil.combine(
                 alloc_tres,
                 slurm.parseCStrZ(node.tres_fmt_str).?,
@@ -375,7 +372,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
 
     if (!args.stats) {
         try table.printstd();
-        try stdout.print("\n", .{});
+        try stdout.print("\nSummary:\n\n", .{});
     }
 
     try show_node_total_util(allocator, total_util, total_util_gres);
