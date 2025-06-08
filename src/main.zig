@@ -4,8 +4,6 @@ const yazap = @import("yazap");
 const log = std.log;
 const App = yazap.App;
 const Arg = yazap.Arg;
-const cmd_node_run = @import("node.zig").run;
-const cmd_job_run = @import("job.zig").run;
 
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -156,10 +154,12 @@ pub fn main() anyerror!void {
     const matches = try app.parseProcess();
 
     if (matches.subcommandMatches("node")) |node_cmd_args| {
+        const cmd_node_run = @import("node.zig").run;
         try cmd_node_run(allocator, node_cmd_args);
     }
 
     if (matches.subcommandMatches("job")) |job_cmd_args| {
+        const cmd_job_run = @import("job.zig").run;
         try cmd_job_run(allocator, job_cmd_args);
     }
 }
