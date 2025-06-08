@@ -237,21 +237,21 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
     defer table.deinit();
 
     var title = std.ArrayList([]const u8).init(allocator);
-    try title.appendSlice(&.{"Nodename"});
+    try title.append("Nodename");
 
     if (args.free) {
-        if (args.cpu) try title.appendSlice(&.{"IdleCPUs"});
-        if (args.mem) try title.appendSlice(&.{"IdleMemory"});
-        if (args.gres) try title.appendSlice(&.{"IdleGRES"});
+        if (args.cpu) try title.append("IdleCPUs");
+        if (args.mem) try title.append("IdleMemory");
+        if (args.gres) try title.append("IdleGRES");
     } else if (args.alloc) {
-        if (args.cpu) try title.appendSlice(&.{"AllocCPUs"});
-        if (args.mem) try title.appendSlice(&.{"AllocMemory"});
-        if (args.gres) try title.appendSlice(&.{"AllocGRES"});
+        if (args.cpu) try title.append("AllocCPUs");
+        if (args.mem) try title.append("AllocMemory");
+        if (args.gres) try title.append("AllocGRES");
     } else {
-        if (args.states.len > 0) try title.appendSlice(&.{"State"});
-        if (args.cpu) try title.appendSlice(&.{"CPUs (A/I/T)"});
-        if (args.mem) try title.appendSlice(&.{"Memory (A/I/T)"});
-        if (args.gres) try title.appendSlice(&.{"GRES"});
+        if (args.states.len > 0) try title.append("State");
+        if (args.cpu) try title.append("CPUs (A/I/T)");
+        if (args.mem) try title.append("Memory (A/I/T)");
+        if (args.gres) try title.append("GRES");
     }
 
     try table.setTitle(try title.toOwnedSlice());
@@ -280,13 +280,13 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         if (args.free and (invalid_base_states or invalid_state_flags)) continue;
 
         var data = std.ArrayList([]const u8).init(allocator);
-        try data.appendSlice(&.{node_name});
+        try data.append(node_name);
 
         if (!args.free and !args.alloc) {
             for (args.states) |requested_state| {
                 const state_str = try state.toStr(allocator);
                 if (std.mem.count(u8, state_str, requested_state) == 0) continue :nextNode;
-                try data.appendSlice(&.{try state.toStr(allocator)});
+                try data.append(try state.toStr(allocator));
             }
         }
 
@@ -321,19 +321,19 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         }
 
         if (args.free) {
-            if (args.cpu) try data.appendSlice(&.{idle_cpus});
-            if (args.mem) try data.appendSlice(&.{idle_memory});
+            if (args.cpu) try data.append(idle_cpus);
+            if (args.mem) try data.append(idle_memory);
             if (args.gres and gres_util != null) {
                 if (try GresUtil.fmtCollection(gres_util.?, allocator, .idle)) |free_gres| {
-                    try data.appendSlice(&.{free_gres});
+                    try data.append(free_gres);
                 } else if (!args.cpu and !args.mem) continue;
             }
         } else if (args.alloc) {
-            if (args.cpu) try data.appendSlice(&.{alloc_cpus});
-            if (args.mem) try data.appendSlice(&.{alloc_memory});
+            if (args.cpu) try data.append(alloc_cpus);
+            if (args.mem) try data.append(alloc_memory);
             if (args.gres and gres_util != null) {
                 if (try GresUtil.fmtCollection(gres_util.?, allocator, .alloc)) |alloc_gres| {
-                    try data.appendSlice(&.{alloc_gres});
+                    try data.append(alloc_gres);
                 } else if (!args.cpu and !args.mem) continue;
             }
         } else {
@@ -343,7 +343,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
                     util.idle_cpus,
                     util.total_cpus,
                 });
-                try data.appendSlice(&.{fmt});
+                try data.append(fmt);
             }
 
             if (args.mem) {
@@ -353,12 +353,12 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
                     idle_memory,
                     total_memory,
                 });
-                try data.appendSlice(&.{fmt});
+                try data.append(fmt);
             }
 
             if (args.gres and gres_util != null) {
                 if (try GresUtil.fmtCollection(gres_util.?, allocator, .idleAndAlloc)) |idle_alloc_gres| {
-                    try data.appendSlice(&.{idle_alloc_gres});
+                    try data.append(idle_alloc_gres);
                 }
             }
         }
