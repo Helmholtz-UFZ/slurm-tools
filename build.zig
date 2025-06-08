@@ -24,7 +24,7 @@ pub const Exe = struct {
     backing_allocator: Allocator,
     path: []const u8 = undefined,
 
-    pub fn default(b: *std.Build, name: []const u8, allocator: Allocator, target: ResolvedTarget, optimize: OptimizedMode) !Exe {
+    pub fn default(b: *std.Build, name: []const u8, path: []const u8, allocator: Allocator, target: ResolvedTarget, optimize: OptimizedMode) !Exe {
         var exe = Exe{
             .name = name,
             .target = target,
@@ -34,7 +34,7 @@ pub const Exe = struct {
             .backing_allocator = allocator,
         };
         exe.slurm_dep = exe.stdDep("slurm");
-        exe.path = "src/main.zig";
+        exe.path = path;
         return exe;
     }
 
@@ -107,7 +107,14 @@ pub const Exe = struct {
 };
 
 fn scli(b: *std.Build, allocator: Allocator, target: ResolvedTarget, optimize: OptimizedMode) !void {
-    var exe = try Exe.default(b, "scli", allocator, target, optimize);
+    var exe = try Exe.default(
+        b,
+        "scli",
+        "src/main.zig",
+        allocator,
+        target,
+        optimize,
+    );
     try exe.deps.appendSlice(&[_]DependencyNamed{
         exe.namedDep("prettytable"),
         exe.namedDep("yazap"),
