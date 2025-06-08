@@ -233,10 +233,10 @@ fn show_node_total_util(allocator: Allocator, util: slurm.Node.Utilization, gres
 }
 
 pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
-    var table = pt.Table.init(allocator);
+    var table: pt.Table = .init(allocator);
     defer table.deinit();
 
-    var title = std.ArrayList([]const u8).init(allocator);
+    var title: std.ArrayList([]const u8) = .init(allocator);
     try title.append("Nodename");
 
     if (args.free) {
@@ -279,7 +279,7 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
 
         if (args.free and (invalid_base_states or invalid_state_flags)) continue;
 
-        var data = std.ArrayList([]const u8).init(allocator);
+        var data: std.ArrayList([]const u8) = .init(allocator);
         try data.append(node_name);
 
         if (!args.free and !args.alloc) {
