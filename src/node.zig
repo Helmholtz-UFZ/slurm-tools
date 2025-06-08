@@ -371,6 +371,8 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         try table.addRow(try data.toOwnedSlice());
     }
 
+    if (table.len() == 0) return;
+
     if (!args.stats) {
         try table.printstd();
         try stdout.print("\n", .{});
