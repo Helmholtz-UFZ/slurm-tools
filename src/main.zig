@@ -15,16 +15,18 @@ pub fn main() anyerror!void {
     const options: App.Options = .{
         .display_help = true,
         .help_options = .{
-            .line = .{
-                .options = .{
-                    .format = .description_separate,
-                    .signature_left_padding = 2,
-                    .signature_max_width = 30,
-                    .description_left_padding = 10,
+            .header_styles = .{
+                .bold = true,
+                .underlined = true,
+            },
+            .line_style = .{
+                .format = .description_separate,
+                .signature = .{
+                    .left_padding = 2,
+                    .max_width = 40,
                 },
-                .subcommand = .{
-                    .format = .description_separate,
-                    .description_left_padding = 8,
+                .description = .{
+                    .left_padding = 10,
                 },
             },
         },
