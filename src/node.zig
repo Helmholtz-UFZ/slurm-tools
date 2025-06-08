@@ -23,17 +23,19 @@ pub const GresUtil = struct {
 
     pub const Collection = std.ArrayList(GresUtil);
 
-    pub fn fmtCollection(gres: GresUtil.Collection, allocator: Allocator, fmt_type: GresUtil.FormatType) ![]const u8 {
+    pub fn fmtCollection(gres: GresUtil.Collection, allocator: Allocator, fmt_type: GresUtil.FormatType) !?[]const u8 {
         var tres_fmt = std.ArrayList(u8).init(allocator);
         defer tres_fmt.deinit();
 
         for (gres.items) |t| {
             const gres_str = try t.fmt(allocator, fmt_type);
-            try tres_fmt.appendSlice(gres_str);
+            if (gres_str) |str| try tres_fmt.appendSlice(str);
         }
 
+        if (tres_fmt.items.len == 0) return null;
+
         _ = tres_fmt.pop();
-        return tres_fmt.toOwnedSlice();
+        return try tres_fmt.toOwnedSlice();
     }
 
     pub fn combine(alloc_gres: ?[:0]const u8, cfg_gres: [:0]const u8, allocator: Allocator) !?GresUtil.Collection {
@@ -72,7 +74,7 @@ pub const GresUtil = struct {
         }
     }
 
-    pub fn fmt(self: GresUtil, allocator: Allocator, fmt_type: FormatType) ![]const u8 {
+    pub fn fmt(self: GresUtil, allocator: Allocator, fmt_type: FormatType) !?[]const u8 {
         const name_or_type = if (self.type) |typ|
             try allocPrint(allocator, "   {s}", .{typ})
         else
@@ -80,21 +82,21 @@ pub const GresUtil = struct {
 
         return switch (fmt_type) {
             .idle => {
-                if (self.idle == 0) return "";
+                if (self.idle == 0) return null;
                 return try allocPrint(allocator, "{s}={d}\n", .{
                     name_or_type,
                     self.idle,
                 });
             },
             .alloc => {
-                if (self.alloc == 0) return "";
+                if (self.alloc == 0) return null;
                 return try allocPrint(allocator, "{s}={d}\n", .{
                     name_or_type,
                     self.alloc,
                 });
             },
             .idleAndAlloc => {
-                if (self.alloc == 0 and self.idle == 0) return "";
+                if (self.alloc == 0 and self.idle == 0) return null;
                 return try allocPrint(allocator, "{s}={d}/{d} ({d} idle)\n", .{
                     name_or_type,
                     self.alloc,
@@ -316,11 +318,19 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
         if (args.free) {
             if (args.cpu) try data.appendSlice(&.{idle_cpus});
             if (args.mem) try data.appendSlice(&.{idle_memory});
-            if (args.gres and gres_util != null) try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .idle)});
+            if (args.gres and gres_util != null) {
+                if (try GresUtil.fmtCollection(gres_util.?, allocator, .idle)) |free_gres| {
+                    try data.appendSlice(&.{free_gres});
+                } else if (!args.cpu and !args.mem) continue;
+            }
         } else if (args.alloc) {
             if (args.cpu) try data.appendSlice(&.{alloc_cpus});
             if (args.mem) try data.appendSlice(&.{alloc_memory});
-            if (args.gres and gres_util != null) try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .alloc)});
+            if (args.gres and gres_util != null) {
+                if (try GresUtil.fmtCollection(gres_util.?, allocator, .alloc)) |alloc_gres| {
+                    try data.appendSlice(&.{alloc_gres});
+                } else if (!args.cpu and !args.mem) continue;
+            }
         } else {
             if (args.cpu) {
                 const fmt = try allocPrint(allocator, "{d: >2} / {d: >2} / {d: >2}", .{
@@ -342,7 +352,9 @@ pub fn show_nodes(allocator: Allocator, args: Args, stdout: anytype) !void {
             }
 
             if (args.gres and gres_util != null) {
-                try data.appendSlice(&.{try GresUtil.fmtCollection(gres_util.?, allocator, .idleAndAlloc)});
+                if (try GresUtil.fmtCollection(gres_util.?, allocator, .idleAndAlloc)) |idle_alloc_gres| {
+                    try data.appendSlice(&.{idle_alloc_gres});
+                }
             }
         }
 
